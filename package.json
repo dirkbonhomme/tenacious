@@ -1,6 +1,6 @@
 {
     "name": "tenacious-http",
-    "version": "0.0.5",
+    "version": "0.0.6",
     "description": "a streaming http connection which will attempt to reconnect whenever the stream lost",
     "main": "tenacious-http",
     "keywords": [

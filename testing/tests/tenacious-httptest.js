@@ -38,7 +38,9 @@ exports['create'] = {
             headers: headers,
             auth: this.username + ':' + this.apiKey
         };
-        var p = Tenacious.create(opts);
+        var p = Tenacious.create(opts, function(client) {
+            client.write('\n');
+        });
         test.deepEqual(p.opts,opts);
         test.done();
     }
@@ -68,19 +70,12 @@ exports['start'] = {
     },
 
     'success' : function(test) {
-        var server = http.createServer(function (req, res) {
-            req.setEncoding('utf-8');
-            req.on('data', function(chunk) {
-                test.equal(chunk, 'written value1');
-                res.write('response');
-                res.end();
-            });
-        }).listen(1333, '127.0.0.1');
 
-        test.expect(8);
+        var t = Tenacious.create(this.opts, function(client) {
+            client.write('written value1');
+        });
 
-        var t = Tenacious.create(this.opts);
-        t.recover = function (){
+        t.recover = function () {
             test.ok(true);
             return Q.resolve();
         };
@@ -99,23 +94,33 @@ exports['start'] = {
             test.equal(statusCode, 200);
         });
 
-        t.start().then(
-            function(r) {
-                test.equal(t.connectionState, 'connected');
-                test.ok(true);
-                server.close();
+        test.expect(8);
 
-            }, function (err) {
-                server.close();
-                test.done();
-            }
-        ).done();
-
-        t.write('written value1');
+        var server = http.createServer(function (req, res) {
+            req.setEncoding('utf-8');
+            req.on('data', function(chunk) {
+                test.equal(chunk, 'written value1');
+                res.write('response');
+                res.end();
+            });
+        }).listen(1333, '127.0.0.1', null, function() {
+                t.start().then(
+                    function(r) {
+                        test.equal(t.connectionState, 'connected');
+                        test.ok(true);
+                        server.close();
+                    }, function (err) {
+                        server.close();
+                        test.done();
+                    }
+                ).done();
+            });
     },
 
     'handles non-200 status codes' : function(test) {
         test.expect(2);
+
+        var t = Tenacious.create(this.opts);
         var server = http.createServer(function (req, res) {
             req.setEncoding('utf-8');
             req.on('data', function(chunk) {
@@ -124,26 +129,21 @@ exports['start'] = {
                 res.write('this is not found');
                 res.end();
             });
-        }).listen(1333, '127.0.0.1');
+        }).listen(1333, '127.0.0.1', null, function(){
+                t.start().then( //connects to the remote server.  returns a promise
+                    function(r) {
+                        server.close();
+                        test.ok(false);
+                        test.done();
+                    }, function (err) {
+                        server.close();
+                        test.ok(true);
+                        test.done();
+                    }
+                ).done();
 
-        var t = Tenacious.create(this.opts);
-        t.recover = function (){
-            return Q.resolve();
-        };
-
-        t.start().then( //connects to the remote server.  returns a promise
-            function(r) {
-                server.close();
-                test.ok(false);
-                test.done();
-            }, function (err) {
-                server.close();
-                test.ok(true);
-                test.done();
-            }
-        ).done();
-
-        t.write('written value1');
+                t.write('written value1');
+            });
     },
 
     'will reject on socket timeout and recover' : function (test) {
@@ -172,13 +172,7 @@ exports['start'] = {
     },
 
     'will emit a recovered event on socket timeout' : function (test) {
-        var server = http.createServer(function (req, res) {
-            req.setEncoding('utf-8');
-            req.on('data', function(chunk) {
-                test.equal(chunk, 'written value1');
-                res.write('this is not found');
-            });
-        }).listen(1333, '127.0.0.1');
+
         Tenacious.SOCKET_TIMEOUT = 100;
 
         var t = Tenacious.create(this.opts);
@@ -193,16 +187,25 @@ exports['start'] = {
             test.done();
         });
 
-        t.start().then(
-            function(r) {
-                test.ok(true);
-            }, function(err) {
-                test.ok(false);
-                server.close();
-                test.done();
-            }
-        ).done();
-        t.write('written value1');
+        var server = http.createServer(function (req, res) {
+            req.setEncoding('utf-8');
+            req.on('data', function(chunk) {
+                test.equal(chunk, 'written value1');
+                res.write('this is not found');
+            });
+        }).listen(1333, '127.0.0.1', null, function() {
+                t.start().then(
+                    function(r) {
+                        test.ok(true);
+                    }, function(err) {
+                        test.ok(false);
+                        server.close();
+                        test.done();
+                    }
+                ).done();
+                t.write('written value1');
+            });
+
     },
 
     'rejects when end point refuses the connection' : function (test) {
@@ -253,7 +256,12 @@ exports['stop'] = {
         t.request.end = function(contents) {
             test.ok(true);
         };
-        test.expect(2);
+
+        t.request.removeAllListeners = function() {
+            test.ok(true);
+        };
+
+        test.expect(3);
         t.stop().then(
             function() {
                 test.ok(true);
@@ -271,7 +279,12 @@ exports['stop'] = {
         t.request.end = function(contents) {
             test.equal(contents, 'ending message');
         };
-        test.expect(2);
+
+        t.request.removeAllListeners = function() {
+            test.ok(true);
+        };
+
+        test.expect(3);
         t.stop('ending message').then(
             function() {
                 test.ok(true);
@@ -438,7 +451,15 @@ exports['isStarted'] = {
     'return false if start has not already been called' : function(test) {
         var t = Tenacious.create('http://127.0.0.1/',1333);
         t.connectionState = 'connected';
+        t.request = {};
         test.equal(t.isWritable(), true);
+        test.done();
+    },
+
+    'returns false when there is a undefined request ' : function(test) {
+        var t = Tenacious.create('http://127.0.0.1/',1333);
+        t.connectionState = 'connected';
+        test.equal(t.isWritable(), false);
         test.done();
     }
 }

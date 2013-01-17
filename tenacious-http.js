@@ -50,7 +50,7 @@ __.create = function (opts, init) {
     instance.opts = opts;
     instance.reconnectAttempts = 0;
     instance.connectionState = 'disconnected';
-    instance.init = init || function(client){};
+    instance.init = init || function(){};
     instance.pendingStop = false;
 
     return instance;
@@ -110,6 +110,8 @@ __.prototype.start = function() {
     this.request.on('socket', function (socket) {
         socket.setTimeout(__.SOCKET_TIMEOUT);
 
+        self.socket = socket;
+
         socket.on('timeout', function() {
             self.recover().then(
                 function(){
@@ -150,7 +152,16 @@ __.prototype.stop = function(message) {
             this.request.end();
         }
     }
-    this.request = undefined;
+    if(this.socket) {
+        this.socket.removeAllListeners();
+        this.socket.destroy();
+    }
+
+    if(this.request) {
+        this.request.removeAllListeners();
+        this.request = undefined;
+    }
+
     return Q.resolve();
 };
 
@@ -179,6 +190,10 @@ __.prototype.recover = function() {
     }
     if(this.reconnectAttempts > 0) {
         return Q.reject('already attempting to reconnect');
+    }
+
+    if(this.request) {
+        this.request.removeAllListeners();
     }
     this.request = undefined;
     this.connectionState = 'reconnecting';
@@ -234,7 +249,7 @@ __.prototype._calculateReconnectDelay = function () {
  * @return {Boolean}
  */
 __.prototype.isWritable = function() {
-    return (this.connectionState === 'connected' || this.connectionState === 'connecting');
+    return (this.connectionState === 'connected' || this.connectionState === 'connecting') && this.request!=null;
 };
 
 module.exports = __;
