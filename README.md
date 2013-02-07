@@ -12,9 +12,15 @@ Note that this module is promise based (via the Q library) and event based (via 
 - `require('tenacious-http');`
 
 ##Use
-###create(host, port, header, initFunction)
+###create(options, initFunction)
     //create a tenaciousHttp instance via the static factory
-    var tenacious = Tenacious.create('HTTP_HOST', HOST_PORT, HTTP_HEADER_OBJECT, INIT_FUNCTION [optional]);
+    var options = {
+            host: 'streaming.api.com',
+            headers: headers,
+            auth: username + ':' + apiKey,
+            path: '/'
+        };
+    var tenacious = Tenacious.create(options, [init function]);
 ###SOCKET_TIMEOUT
 SOCKET_TIMEOUT is a static variable.
 If there is no activity between the http connection and the client for SOCKET_TIME (in ms),
