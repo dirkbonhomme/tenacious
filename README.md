@@ -12,7 +12,7 @@ Note that this module is promise based (via the Q library) and event based (via 
 - `require('tenacious-http');`
 
 ##Use
-###create(options, initFunction)
+###create(options)
     //create a tenaciousHttp instance via the static factory
     var options = {
             host: 'streaming.api.com',

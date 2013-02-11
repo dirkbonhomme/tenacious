@@ -31,8 +31,9 @@
 "use strict"
 
 var Q = require('q');
-var http = require('http');
+var https = require('https');
 var EventEmitter = require('events').EventEmitter;
+var parseUrl = require('url').parse;
 
 var __ = function(){
 
@@ -40,17 +41,25 @@ var __ = function(){
 
 /**
  * creates an instance of tenaciousHttp
- * @param opts - options passed into an http request
- * @param init - function which is called after the initial request or subsequent reconnect is made
+ *
+ * @param opts - a URL, an options object, or a function to create an http request
  * @return {Object tenaciousHttp}
  */
-__.create = function (opts, init) {
+__.create = function (opts) {
+
     var instance = new __();
 
-    instance.opts = opts;
+    if (typeof opts === 'function') {
+        instance.initRequest = opts;
+    }
+    else {
+        instance.initRequest = function () {
+            return https.request(opts);
+        };
+    }
+
     instance.reconnectAttempts = 0;
     instance.connectionState = 'disconnected';
-    instance.init = init || function(){};
     instance.pendingStop = false;
 
     return instance;
@@ -77,10 +86,12 @@ __.prototype.start = function() {
     this.pendingStop = false;
     this.connectionState = 'connecting';
 
-    this.opts.method = 'GET';
+    this.request = this.initRequest();
 
-    this.request = http.request(this.opts, function (response) {
-        response.setEncoding('utf-8');
+    this.request.on('response', function (response) {
+
+        response.setEncoding('utf8');
+
         if(response.statusCode !== 200) {
             response.on('data', function(chunk){
                 errorMessage += chunk;
@@ -89,7 +100,8 @@ __.prototype.start = function() {
             response.on('end', function() {
                 d.reject('bad status code: ' + response.statusCode + '\n' + errorMessage);
             });
-        } else {
+        }
+        else {
             response.on('data', function(chunk){
                 self.emit('data',chunk, response.statusCode);
             });
@@ -101,6 +113,7 @@ __.prototype.start = function() {
                         self.emit('recovered', 'server end');
                     });
             });
+
             self.connectionState = 'connected';
             d.resolve();
         }
@@ -134,7 +147,7 @@ __.prototype.start = function() {
     this.request.on('error', function(err) {
         d.reject(err);
     });
-    this.init(this);
+
     return d.promise;
 };
 
@@ -144,7 +157,9 @@ __.prototype.start = function() {
  * @return {Promise}
  */
 __.prototype.stop = function(message) {
+
     this.pendingStop = true;
+
     if(this.isWritable()) {
         if(message) {
             this.request.end(message);
