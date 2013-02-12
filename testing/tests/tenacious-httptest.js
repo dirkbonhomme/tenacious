@@ -69,11 +69,7 @@ exports['create'] = {
         var req = new EventEmitter();
 
         var headers = {test:'123'};
-        var opts = {
-            host: 'test host',
-            headers: headers,
-            auth: this.username + ':' + this.apiKey
-        };
+        var opts = {};
 
         MonkeyPatcher.patch(https, 'request', function (options) {
 
@@ -116,6 +112,8 @@ exports['start'] = {
 
     setUp : function(cb) {
 
+        MonkeyPatcher.setUp();
+
         var headers = {
             'User-Agent'        : 'agent',
             'Host'              : 'localhost',
@@ -136,189 +134,230 @@ exports['start'] = {
 
     tearDown : function(cb) {
 
+        MonkeyPatcher.tearDown();
+
         Tenacious.SOCKET_TIMEOUT = 60000;
         cb();
     },
 
-//    'success' : function(test) {
-//
-//        var t = Tenacious.create(this.opts, function(client) {
-//            client.write('written value1');
-//        });
-//
-//        t.recover = function () {
-//            test.ok(true);
-//            return Q.resolve();
-//        };
-//
-//        t.on('data', function(chunk, statusCode){
-//            test.equal(chunk, 'response');
-//            test.equal(statusCode, 200);
-//        });
-//
-//        t.on('recovered', function(mess) {
-//            test.equal(mess, 'server end');
-//            test.done();
-//        });
-//
-//        t.on('end', function(statusCode){
-//            test.equal(statusCode, 200);
-//        });
-//
-//        test.expect(8);
-//
-//        var server = http.createServer(function (req, res) {
-//            req.setEncoding('utf-8');
-//            req.on('data', function(chunk) {
-//                test.equal(chunk, 'written value1');
-//                res.write('response');
-//                res.end();
-//            });
-//        }).listen(1333, '127.0.0.1', null, function() {
-//                t.start().then(
-//                    function(r) {
-//                        test.equal(t.connectionState, 'connected');
-//                        test.ok(true);
-//                        server.close();
-//                    }, function (err) {
-//                        server.close();
-//                        test.done();
-//                    }
-//                ).done();
-//            });
-//    },
+    "rejects on bad callback": function (test) {
 
-//    'handles non-200 status codes' : function(test) {
-//        test.expect(2);
-//
-//        var t = Tenacious.create(this.opts);
-//        var server = http.createServer(function (req, res) {
-//            req.setEncoding('utf-8');
-//            req.on('data', function(chunk) {
-//                test.equal(chunk, 'written value1');
-//                res.writeHead(401);
-//                res.write('this is not found');
-//                res.end();
-//            });
-//        }).listen(1333, '127.0.0.1', null, function(){
-//                t.start().then( //connects to the remote server.  returns a promise
-//                    function(r) {
-//                        server.close();
-//                        test.ok(false);
-//                        test.done();
-//                    }, function (err) {
-//                        server.close();
-//                        test.ok(true);
-//                        test.done();
-//                    }
-//                ).done();
-//
-//                t.write('written value1');
-//            });
-//    },
+        var t = Tenacious.create(function(client) {
+            throw new Error("oh no!");
+        });
 
-    'will reject on socket timeout and recover' : function (test) {
+        t.start().fail(
+            function () {
+                test.done();
+            }
+        );
+    },
+
+    'success' : function(test) {
+
+        test.expect(8);
+
+        var req = new EventEmitter();
+        var res = new EventEmitter();
+        var self = this;
+
+        res.statusCode = 200;
+
+        res.setEncoding = function (enc) {
+            test.equal(enc, 'utf8');
+        };
+
+        MonkeyPatcher.patch(https, 'request', function (options) {
+
+            test.equal(options, self.opts);
+
+            return req;
+        });
 
         var t = Tenacious.create(this.opts);
-        Tenacious.SOCKET_TIMEOUT = 1;
-        test.expect(3);
 
-        t.recover = function (){
+        // mock recovery because we'll end the mock response
+        t.recover = function () {
             test.ok(true);
             return Q.resolve();
         };
 
-        t.on('recovered', function(message){
-            test.equal(message, 'timeout');
+        t.on('data', function (chunk, statusCode) {
+            test.equal(chunk, 'response');
+            test.equal(statusCode, 200);
+        });
+
+        t.on('end', function (statusCode) {
+            test.equal(statusCode, 200);
+        });
+
+        t.on('recovered', function (reason) {
+            test.equal(reason, 'server end');
+            test.done();
         });
 
         t.start().then(
             function () {
-                test.ok(false);
-                test.done();
-            }, function (err) {
-                test.ok(true);
-                test.done();
-            }).done();
+                test.equal(t.connectionState, 'connected');
+                res.emit('data', 'response');
+                res.emit('end');
+            }
+        ).done();
+
+        req.emit('response', res);
     },
 
-//    'will emit a recovered event on socket timeout' : function (test) {
-//
-//        Tenacious.SOCKET_TIMEOUT = 100;
-//
-//        var t = Tenacious.create(this.opts);
-//
-//        t.recover = function (){
-//            return Q.resolve();
-//        };
-//
-//        t.on('recovered', function(message){
-//            test.equal(message,'timeout');
-//            server.close();
-//            test.done();
-//        });
-//
-//        var server = http.createServer(function (req, res) {
-//            req.setEncoding('utf-8');
-//            req.on('data', function(chunk) {
-//                test.equal(chunk, 'written value1');
-//                res.write('this is not found');
-//            });
-//        }).listen(1333, '127.0.0.1', null, function() {
-//                t.start().then(
-//                    function(r) {
-//                        test.ok(true);
-//                    }, function(err) {
-//                        test.ok(false);
-//                        server.close();
-//                        test.done();
-//                    }
-//                ).done();
-//                t.write('written value1');
-//            });
-//
-//    },
+    'rejects on non-200 status codes' : function(test) {
 
-//    'rejects when end point refuses the connection' : function (test) {
-//        test.expect(3);
-//
-//        var t = Tenacious.create(this.opts);
-//
-//        t.recover = function (){
-//            test.ok(true);
-//            return Q.resolve();
-//        };
-//
-//        t.on('recovered', function(mess){
-//            test.equal(mess, 'connection closed with error');
-//            test.done();
-//        });
-//
-//        t.start().then(function(){
-//            test.ok(false);
-//            test.done();
-//        }, function (err)  {
-//            test.ok(true);
-//        }).done();
-//    },
-//
-//    'will resolve if there is already a request' : function(test) {
-//        var t = Tenacious.create('https://localhost/',1333, this.headers);
-//
-//        t.isWritable = function() {
-//            return true;
-//        };
-//
-//        test.expect(1);
-//
-//        t.start().then(
-//            function() {
-//                test.ok(true);
-//                test.done();
-//            }
-//        ).done();
-//    }
-}
+        test.expect(3);
+
+        var req = new EventEmitter();
+        var res = new EventEmitter();
+        var self = this;
+
+        res.statusCode = 401;
+
+        res.setEncoding = function (enc) {
+            test.equal(enc, 'utf8');
+        };
+
+        MonkeyPatcher.patch(https, 'request', function (options) {
+
+            test.equal(options, self.opts);
+
+            return req;
+        });
+
+        var t = Tenacious.create(this.opts);
+
+        t.start().fail(
+            function (reason) {
+                test.equal(reason, 'bad status code: 401\nthere was an error!');
+                test.done();
+            }
+        );
+
+        req.emit('response', res);
+        res.emit('data', 'there was an error!');
+        res.emit('end');
+    },
+
+    'will reject on socket timeout and recover' : function (test) {
+
+        test.expect(3);
+
+        var req = new EventEmitter();
+        var self = this;
+
+        MonkeyPatcher.patch(https, 'request', function (options) {
+            test.equal(options, self.opts);
+            return req;
+        });
+
+        var t = Tenacious.create(this.opts);
+
+        t.recover = function () {
+            test.ok(true);
+            return Q.resolve();
+        };
+
+        t.on('recovered', function (mess) {
+            test.equal(mess, 'timeout');
+            test.done();
+        });
+
+        t.start().fail(
+            function (err)  {
+                test.done();
+            });
+
+        var socket = new EventEmitter();
+
+        socket.setTimeout = function () {};
+        socket.destroy = function () {};
+
+        req.emit('socket', socket);
+        socket.emit('timeout');
+    },
+
+    'rejects when end point refuses the connection' : function (test) {
+
+        test.expect(3);
+
+        var req = new EventEmitter();
+        var self = this;
+
+        MonkeyPatcher.patch(https, 'request', function (options) {
+            test.equal(options, self.opts);
+            return req;
+        });
+
+        var t = Tenacious.create(this.opts);
+
+        t.recover = function () {
+            test.ok(true);
+            return Q.resolve();
+        };
+
+        t.on('recovered', function (mess) {
+            test.equal(mess, 'connection closed with error');
+            test.done();
+        });
+
+        t.start().fail(
+            function (err)  {
+                test.done();
+            });
+
+        var socket = new EventEmitter();
+
+        socket.setTimeout = function () {};
+        socket.destroy = function () {};
+
+        req.emit('socket', socket);
+        socket.emit('close', true);
+    },
+
+    'rejects on request error' : function (test) {
+
+        test.expect(1);
+
+        var req = new EventEmitter();
+        var self = this;
+
+        MonkeyPatcher.patch(https, 'request', function (options) {
+            test.equal(options, self.opts);
+            return req;
+        });
+
+        var t = Tenacious.create(this.opts);
+
+        t.start().fail(
+            function (err)  {
+                test.done();
+            });
+
+        req.emit('error', new Error());
+    },
+
+    'will resolve if there is already a request' : function(test) {
+
+        test.expect(1);
+
+        var t = Tenacious.create('https://localhost/');
+
+        t.isWritable = function() {
+            test.ok(true);
+            return true;
+        };
+
+        t.start().then(
+            function() {
+                test.done();
+            }
+        ).done();
+    }
+};
 
 exports['stop'] = {
     'success' : function(test) {

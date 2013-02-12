@@ -86,69 +86,75 @@ __.prototype.start = function() {
     this.pendingStop = false;
     this.connectionState = 'connecting';
 
-    this.request = this.initRequest();
+    try {
+        this.request = this.initRequest();
 
-    this.request.on('response', function (response) {
+        this.request.on('response', function (response) {
 
-        response.setEncoding('utf8');
+            response.setEncoding('utf8');
 
-        if(response.statusCode !== 200) {
-            response.on('data', function(chunk){
-                errorMessage += chunk;
-            });
+            if(response.statusCode !== 200) {
 
-            response.on('end', function() {
-                d.reject('bad status code: ' + response.statusCode + '\n' + errorMessage);
-            });
-        }
-        else {
-            response.on('data', function(chunk){
-                self.emit('data',chunk, response.statusCode);
-            });
-
-            response.on('end', function() {
-                self.emit('end', response.statusCode);
-                self.recover().then(
-                    function(){
-                        self.emit('recovered', 'server end');
-                    });
-            });
-
-            self.connectionState = 'connected';
-            d.resolve();
-        }
-    });
-
-    //handle socket timeouts
-    this.request.on('socket', function (socket) {
-        socket.setTimeout(__.SOCKET_TIMEOUT);
-
-        self.socket = socket;
-
-        socket.on('timeout', function() {
-            self.recover().then(
-                function(){
-                    self.emit('recovered', 'timeout');
+                response.on('data', function (chunk) {
+                    errorMessage += chunk;
                 });
-            socket.destroy();
-        });
 
-        socket.on('close', function (hasError) {
-            if(hasError) {
-                self.recover().then(
-                    function(){
-                        self.emit('recovered', 'connection closed with error');
-                    });
-                socket.destroy();
+                response.on('end', function () {
+                    d.reject('bad status code: ' + response.statusCode + '\n' + errorMessage);
+                });
+            }
+            else {
+                response.on('data', function (chunk) {
+                    self.emit('data', chunk, response.statusCode);
+                });
+
+                response.on('end', function () {
+                    self.emit('end', response.statusCode);
+                    self.recover().then(
+                        function () {
+                            self.emit('recovered', 'server end');
+                        });
+                });
+
+                self.connectionState = 'connected';
+                d.resolve();
             }
         });
-    });
 
-    this.request.on('error', function(err) {
-        d.reject(err);
-    });
+        //handle socket timeouts
+        this.request.on('socket', function (socket) {
+            socket.setTimeout(__.SOCKET_TIMEOUT);
 
-    return d.promise;
+            self.socket = socket;
+
+            socket.on('timeout', function() {
+                self.recover().then(
+                    function () {
+                        self.emit('recovered', 'timeout');
+                    });
+                socket.destroy();
+            });
+
+            socket.on('close', function (hasError) {
+                if(hasError) {
+                    self.recover().then(
+                        function(){
+                            self.emit('recovered', 'connection closed with error');
+                        });
+                    socket.destroy();
+                }
+            });
+        });
+
+        this.request.on('error', function(err) {
+            d.reject(err);
+        });
+
+        return d.promise;
+    }
+    catch (e) {
+        return Q.reject(e);
+    }
 };
 
 /**
@@ -185,6 +191,7 @@ __.prototype.stop = function(message) {
  * @param content - string message to send to the host
  */
 __.prototype.write = function(content) {
+
     if(this.isWritable()) {
         this.request.write(content);
     } else {
