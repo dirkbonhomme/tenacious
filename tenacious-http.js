@@ -33,14 +33,14 @@
 var Q = require('q');
 var https = require('https');
 var EventEmitter = require('events').EventEmitter;
-var parseUrl = require('url').parse;
 
-var __ = function(){
-
+// minimal constructor
+var __ = function () {
 };
 
+////////////////////////////////////////////////////////////////////////////////
 /**
- * creates an instance of tenaciousHttp
+ * Factory - creates an instance of tenaciousHttp
  *
  * @param opts - a URL, an options object, or a function to create an http request
  * @return {Object tenaciousHttp}
@@ -68,20 +68,23 @@ __.create = function (opts) {
 __.prototype = Object.create(EventEmitter.prototype);
 __.SOCKET_TIMEOUT = 60000;
 
+////////////////////////////////////////////////////////////////////////////////
 /**
- * starts a tenaciousHttp connection
- * @return {Promise}
+ * Starts a TenaciousHttp connection
+ *
+ * @return {Promise}    resolved when response received
  */
-__.prototype.start = function() {
+__.prototype.start = function () {
+
+    if(this.startPromise) {
+        return this.startPromise;
+    }
 
     var d = Q.defer();
     var errorMessage = '';
     var self = this;
 
-    if(this.isWritable()) {
-        //we already have a open connection
-        return Q.resolve();
-    }
+    this.startPromise = d.promise;
 
     this.pendingStop = false;
     this.connectionState = 'connecting';
@@ -138,7 +141,7 @@ __.prototype.start = function() {
             socket.on('close', function (hasError) {
                 if(hasError) {
                     self.recover().then(
-                        function(){
+                        function () {
                             self.emit('recovered', 'connection closed with error');
                         });
                     socket.destroy();
@@ -157,6 +160,7 @@ __.prototype.start = function() {
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
 /**
  * stops the tenaciousHttp connection
  * @param message -  string message to send to the host with the end message
@@ -166,39 +170,44 @@ __.prototype.stop = function(message) {
 
     this.pendingStop = true;
 
-    if(this.isWritable()) {
+    if(this.request) {
+
         if(message) {
             this.request.end(message);
         } else {
             this.request.end();
         }
+
+        this.request.removeAllListeners();
+        delete this.request;
     }
-    if(this.socket) {
+
+    if (this.socket) {
         this.socket.removeAllListeners();
         this.socket.destroy();
     }
 
-    if(this.request) {
-        this.request.removeAllListeners();
-        this.request = undefined;
-    }
+    delete this.startPromise;
 
     return Q.resolve();
 };
 
+////////////////////////////////////////////////////////////////////////////////
 /**
  * writes a message to the http connection buffer
  * @param content - string message to send to the host
  */
 __.prototype.write = function(content) {
 
-    if(this.isWritable()) {
+    if(this.request) {
         this.request.write(content);
-    } else {
-        //buffered writes?
+    }
+    else {
+        this.emit('error', new Error('data written while not connected'));
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
 /**
  * will initiate a connection recovery.
  * will continuously attempt to reconnect to the host
@@ -206,10 +215,13 @@ __.prototype.write = function(content) {
  * @return {Promise}
  */
 __.prototype.recover = function() {
+
     var d = Q.defer();
+
     if(this.pendingStop){
         return Q.reject('will not recover when there is a pending stop');
     }
+
     if(this.reconnectAttempts > 0) {
         return Q.reject('already attempting to reconnect');
     }
@@ -217,6 +229,7 @@ __.prototype.recover = function() {
     if(this.request) {
         this.request.removeAllListeners();
     }
+
     this.request = undefined;
     this.connectionState = 'reconnecting';
     this.reconnectAttempts = 0;
@@ -224,6 +237,7 @@ __.prototype.recover = function() {
     return d.promise;
 };
 
+////////////////////////////////////////////////////////////////////////////////
 /**
  * recursive connect method.
  * @param deferred Promise
@@ -231,7 +245,9 @@ __.prototype.recover = function() {
  * @private
  */
 __.prototype._reconnect = function(deferred) {
+
     var self = this;
+
     return Q.delay(this._calculateReconnectDelay()).then(
         function() {
             self.start().then(
@@ -246,6 +262,8 @@ __.prototype._reconnect = function(deferred) {
         }
     );
 };
+
+////////////////////////////////////////////////////////////////////////////////
 /**
  * calculates the required delay before attempting to reconnect (in ms)
  * @return {Number}
@@ -264,14 +282,6 @@ __.prototype._calculateReconnectDelay = function () {
 
     ++this.reconnectAttempts;
     return delay;
-};
-
-/**
- * returns if the tenaciousHttp is in a connected state.  i.e. the connection can be written to.
- * @return {Boolean}
- */
-__.prototype.isWritable = function() {
-    return (this.connectionState === 'connected' || this.connectionState === 'connecting') && this.request!=null;
 };
 
 module.exports = __;

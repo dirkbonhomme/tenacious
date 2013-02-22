@@ -153,9 +153,9 @@ exports['start'] = {
         );
     },
 
-    'success' : function(test) {
+    'success returns same promise' : function(test) {
 
-        test.expect(8);
+        test.expect(9);
 
         var req = new EventEmitter();
         var res = new EventEmitter();
@@ -196,13 +196,18 @@ exports['start'] = {
             test.done();
         });
 
-        t.start().then(
+        var startPromise = t.start();
+
+        startPromise.then(
             function () {
                 test.equal(t.connectionState, 'connected');
                 res.emit('data', 'response');
                 res.emit('end');
             }
         ).done();
+
+        // make sure it returns the exact same promise!
+        test.equal(t.start(), startPromise);
 
         req.emit('response', res);
     },
@@ -338,29 +343,15 @@ exports['start'] = {
             });
 
         req.emit('error', new Error());
-    },
-
-    'will resolve if there is already a request' : function(test) {
-
-        test.expect(1);
-
-        var t = Tenacious.create('https://localhost/');
-
-        t.isWritable = function() {
-            test.ok(true);
-            return true;
-        };
-
-        t.start().then(
-            function() {
-                test.done();
-            }
-        ).done();
     }
 };
 
 exports['stop'] = {
+
     'success' : function(test) {
+
+        test.expect(2);
+
         var t = Tenacious.create('https://127.0.0.1/',1333);
         t.connectionState = 'connected';
         t.request = {};
@@ -372,18 +363,68 @@ exports['stop'] = {
             test.ok(true);
         };
 
-        test.expect(3);
         t.stop().then(
             function() {
-                test.ok(true);
-                test.done();
-            }, function(err){
-                test.ok(false);
                 test.done();
             }
         ).done();
     },
+
+    'stop then start again' : function(test) {
+
+        test.expect(4);
+
+        var t = Tenacious.create('https://127.0.0.1/',1333);
+        var req = new EventEmitter();
+        var res = new EventEmitter();
+        var initReqCalled = false;
+
+        req.end = function(contents) {
+            test.ok(true);
+        };
+
+        req.removeAllListeners = function() {
+            test.ok(true);
+        };
+
+        res.statusCode = 200;
+        res.setEncoding = function () {};
+
+        t.initRequest = function () {
+
+            initReqCalled = true;
+            return req;
+        };
+
+        t.start().then(
+            function () {
+                test.ok(initReqCalled);
+                return t.stop();
+            }
+        ).then(
+            function () {
+
+                initReqCalled = false;
+
+                var p = t.start();
+
+                req.emit('response', res);
+
+                return p;
+            }
+        ).then(
+            function () {
+                test.ok(initReqCalled);
+                test.done();
+            }
+        ).done();
+
+        req.emit('response', res);
+    },
+
     'still end connection with message' : function(test) {
+        test.expect(2);
+
         var t = Tenacious.create('https://127.0.0.1/',1333);
         t.request = {};
         t.connectionState = 'connected';
@@ -395,18 +436,13 @@ exports['stop'] = {
             test.ok(true);
         };
 
-        test.expect(3);
         t.stop('ending message').then(
             function() {
-                test.ok(true);
-                test.done();
-            }, function(err){
-                test.ok(false);
                 test.done();
             }
         ).done();
     }
-}
+};
 
 exports['write'] = {
     'success' : function(test) {
@@ -422,7 +458,7 @@ exports['write'] = {
         t.write('test');
         test.done();
     }
-}
+};
 
 exports['reconnect'] = {
     'success' : function(test){
@@ -449,7 +485,7 @@ exports['reconnect'] = {
             }
         ).done();
     }
-}
+};
 
 exports['recover'] = {
     'success' : function(test) {
@@ -530,7 +566,7 @@ exports['recover'] = {
             }
         ).done();
     }
-}
+};
 
 exports['calculateReconnectionDelay'] = {
     'will calculate reconnect timer' : function(test) {
@@ -550,27 +586,4 @@ exports['calculateReconnectionDelay'] = {
 
         test.done();
     }
-}
-
-exports['isStarted'] = {
-    'returns true if start has already resolved' : function(test) {
-        var t = Tenacious.create('https://127.0.0.1/',1333);
-        test.equal(t.isWritable(), false);
-        test.done();
-    },
-
-    'return false if start has not already been called' : function(test) {
-        var t = Tenacious.create('https://127.0.0.1/',1333);
-        t.connectionState = 'connected';
-        t.request = {};
-        test.equal(t.isWritable(), true);
-        test.done();
-    },
-
-    'returns false when there is a undefined request ' : function(test) {
-        var t = Tenacious.create('https://127.0.0.1/',1333);
-        t.connectionState = 'connected';
-        test.equal(t.isWritable(), false);
-        test.done();
-    }
-}
+};
