@@ -162,6 +162,19 @@ __.prototype.start = function () {
 
 ////////////////////////////////////////////////////////////////////////////////
 /**
+ * Returns true if the connection has been opened or is being opened.
+ */
+__.prototype.started = function () {
+
+    if (this.startPromise) {
+        return true;
+    }
+
+    return false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/**
  * stops the tenaciousHttp connection
  * @param message -  string message to send to the host with the end message
  * @return {Promise}
