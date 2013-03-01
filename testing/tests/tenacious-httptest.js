@@ -106,7 +106,7 @@ exports['create'] = {
 
         test.done();
     }
-}
+};
 
 exports['start'] = {
 
@@ -445,6 +445,7 @@ exports['stop'] = {
 };
 
 exports['write'] = {
+
     'success' : function(test) {
         var t = Tenacious.create('https://127.0.0.1/',1333);
         t.request = {};
@@ -461,6 +462,7 @@ exports['write'] = {
 };
 
 exports['reconnect'] = {
+
     'success' : function(test){
         var t = Tenacious.create('https://127.0.0.1/',1333);
         t._calculateReconnectDelay = function() {
@@ -487,7 +489,63 @@ exports['reconnect'] = {
     }
 };
 
+exports['started'] = {
+
+    setUp : function(cb) {
+
+        MonkeyPatcher.setUp();
+
+        var headers = {
+            'User-Agent'        : 'agent',
+            'Host'              : 'localhost',
+            'Connection'        : 'Keep-Alive',
+            'Transfer-Encoding' : 'chunked',
+            'Authorization'     : 'abc123:123'
+        };
+
+        cb();
+    },
+
+    'success': function (test) {
+
+        var req = new EventEmitter();
+        var res = new EventEmitter();
+
+        req.end = function () {};
+        req.removeAllListeners = function () {};
+
+        res.statusCode = 200;
+
+        res.setEncoding = function (enc) {
+            test.equal(enc, 'utf8');
+        };
+
+        MonkeyPatcher.patch(https, 'request', function (options) {
+            return req;
+        });
+
+        var t = Tenacious.create('https://127.0.0.1/', 1333);
+
+        t.start().then(
+            function () {
+                test.ok(t.started());
+
+                return t.stop();
+            }
+        ).then(
+            function () {
+                test.equal(t.started(), false);
+
+                test.done();
+            }
+        ).done();
+
+        req.emit('response', res);
+    }
+};
+
 exports['recover'] = {
+
     'success' : function(test) {
         var t = Tenacious.create('https://127.0.0.1/',1333);
 
