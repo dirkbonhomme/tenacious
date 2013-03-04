@@ -243,6 +243,7 @@ __.prototype.recover = function() {
         this.request.removeAllListeners();
     }
 
+    delete this.startPromise;
     this.request = undefined;
     this.connectionState = 'reconnecting';
     this.reconnectAttempts = 0;

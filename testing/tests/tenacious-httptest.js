@@ -506,6 +506,10 @@ exports['started'] = {
         cb();
     },
 
+    tearDown : function(cb) {
+        MonkeyPatcher.tearDown(cb);
+    },
+
     'success': function (test) {
 
         var req = new EventEmitter();
@@ -546,25 +550,68 @@ exports['started'] = {
 
 exports['recover'] = {
 
-    'success' : function(test) {
-        var t = Tenacious.create('https://127.0.0.1/',1333);
+    setUp : function(cb) {
+        MonkeyPatcher.setUp(cb);
+    },
 
-        t._reconnect = function(d) {
-            return d.resolve({});
+    tearDown : function(cb) {
+        MonkeyPatcher.tearDown(cb);
+    },
+
+    'success' : function(test) {
+
+        test.expect(6);
+
+        var req = new EventEmitter();
+        var res = new EventEmitter();
+        var reqCalled = false;
+
+        req.end = function () {};
+        req.removeAllListeners = function () {};
+
+        res.statusCode = 200;
+
+        res.setEncoding = function (enc) {
+            test.equal(enc, 'utf8');
         };
 
-        t.recover().then(
-            function(r){
-                test.done();
-            }, function(err) {
-                test.ok(false);
+        MonkeyPatcher.patch(https, 'request', function (options) {
+            reqCalled = true;
+            return req;
+        });
+
+        var t = Tenacious.create('https://127.0.0.1/',1333);
+
+        t._calculateReconnectDelay = function () {
+            return 0;
+        };
+
+        test.equal(reqCalled, false);
+
+        t.start().then(
+            function () {
+                test.equal(reqCalled, true);
+                reqCalled = false;
+                var p = t.recover();
+                setTimeout(function () {
+                    req.emit('response', res);
+                }, 10);
+                return p;
+            }
+        ).then(
+            function () {
+                test.equal(reqCalled, true);
                 test.done();
             }
         ).done();
+
+        req.emit('response', res);
     },
 
     'will attempt to recover again if it fails to reconnect' : function(test) {
+
         var t = Tenacious.create('https://127.0.0.1/',1333);
+
         test.expect(10);
         t.start = function () {
             test.ok(true);
@@ -587,14 +634,12 @@ exports['recover'] = {
         t.recover().then(
             function(r) {
                 test.done();
-            }, function(err) {
-                test.ok(false);
-                test.done();
             }
         ).done();
     },
 
     'will reject if already attempting to reconnect' : function(test) {
+
         var t = Tenacious.create('https://127.0.0.1/',1333);
         t.reconnectAttempts = 1;
         test.expect(1);
@@ -614,12 +659,8 @@ exports['recover'] = {
         var t = Tenacious.create('https://127.0.0.1/',1333);
         t.pendingStop = true;
 
-        t.recover().then(
+        t.recover().fail(
             function(){
-                test.ok(false);
-                test.done();
-            }, function(err) {
-                test.ok(true);
                 test.done();
             }
         ).done();
