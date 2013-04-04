@@ -116,6 +116,8 @@ __.prototype.start = function () {
                     self.recover().then(
                         function () {
                             self.emit('recovered', 'server end');
+                        }, function(err) {
+                            self.emit('error', 'failed to recovred: ' + err);
                         });
                 });
 

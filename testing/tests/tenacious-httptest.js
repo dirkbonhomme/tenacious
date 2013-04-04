@@ -343,6 +343,65 @@ exports['start'] = {
             });
 
         req.emit('error', new Error());
+    },
+
+    'emits error of a failure to recover' : function(test) {
+
+        test.expect(9);
+
+        var req = new EventEmitter();
+        var res = new EventEmitter();
+        var self = this;
+
+        res.statusCode = 200;
+
+        res.setEncoding = function (enc) {
+            test.equal(enc, 'utf8');
+        };
+
+        MonkeyPatcher.patch(https, 'request', function (options) {
+
+            test.equal(options, self.opts);
+
+            return req;
+        });
+
+        var t = Tenacious.create(this.opts);
+
+        // mock recovery because we'll end the mock response
+        t.recover = function () {
+            test.ok(true);
+            return Q.reject();
+        };
+
+        t.on('data', function (chunk, statusCode) {
+            test.equal(chunk, 'response');
+            test.equal(statusCode, 200);
+        });
+
+        t.on('end', function (statusCode) {
+            test.equal(statusCode, 200);
+        });
+
+        t.on('error', function(message) {
+            test.ok(true);
+            test.done();
+        });
+
+        var startPromise = t.start();
+
+        startPromise.then(
+            function () {
+                test.equal(t.connectionState, 'connected');
+                res.emit('data', 'response');
+                res.emit('end');
+            }
+        ).done();
+
+        // make sure it returns the exact same promise!
+        test.equal(t.start(), startPromise);
+
+        req.emit('response', res);
     }
 };
 
@@ -477,12 +536,11 @@ exports['reconnect'] = {
 
         test.expect(3);
 
-        t._reconnect().then(
+        var d = Q.defer();
+
+        t._reconnect(d).then(
             function(r){
                 test.ok(true);
-                test.done();
-            }, function(err) {
-                test.ok(false);
                 test.done();
             }
         ).done();
