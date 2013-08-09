@@ -12,8 +12,14 @@
         "type": "git",
         "url": "http://github.com/LocalResponse/tenacious.git"
     },
+    "scripts": {
+        "test": "make test"
+    },
     "dependencies": {
         "q": "",
         "monkey-patcher": ""
+    },
+    "devDependencies": {
+        "nodeunit": ""   
     }
 }

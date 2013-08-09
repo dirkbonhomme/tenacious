@@ -11,6 +11,17 @@ Note that this module is promise based (via the Q library) and event based (via 
 - npm install tenacious-http
 - `require('tenacious-http');`
 
+##Test
+
+Navigate to this module's repository and make sure you have the development modules installed:
+
+- npm install
+
+
+Run the tests:
+
+- npm test 
+
 ##Use
 ###create(options)
     //create a tenaciousHttp instance via the static factory
